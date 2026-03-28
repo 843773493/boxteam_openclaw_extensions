@@ -1,0 +1,5 @@
+reference_repo/*
+.openclaw-debug/*
+**/openclaw.debug.json
+
+.env

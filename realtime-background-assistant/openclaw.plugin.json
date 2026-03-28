@@ -1,0 +1,75 @@
+{
+  "id": "realtime-background-assistant",
+  "name": "Realtime Background Assistant",
+  "description": "Desktop screenshot tool and local HTTP chat bridge for a background assistant.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "http": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "host": {
+            "type": "string",
+            "default": "127.0.0.1"
+          },
+          "port": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 65535,
+            "default": 18189
+          },
+          "basePath": {
+            "type": "string",
+            "default": "/chat"
+          }
+        }
+      },
+      "assistant": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "defaultAgentId": {
+            "type": "string",
+            "default": "main"
+          },
+          "defaultConversationId": {
+            "type": "string",
+            "default": "main"
+          },
+          "defaultSystemPrompt": {
+            "type": "string"
+          },
+          "runTimeoutMs": {
+            "type": "number",
+            "minimum": 1000,
+            "default": 120000
+          },
+          "maxMessages": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 50
+          }
+        }
+      },
+      "screenshot": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "timeoutMs": {
+            "type": "number",
+            "minimum": 1000,
+            "default": 15000
+          },
+          "maxBytes": {
+            "type": "number",
+            "minimum": 1,
+            "default": 6291456
+          }
+        }
+      }
+    }
+  }
+}

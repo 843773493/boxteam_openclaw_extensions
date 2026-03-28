@@ -1,0 +1,20 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "openclaw:prepare-debug",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/d",
+        "/c",
+        "if not exist .openclaw-debug mkdir .openclaw-debug && if not exist realtime-background-assistant\\node_modules\\nul (if exist realtime-background-assistant\\package-lock.json (npm ci --prefix realtime-background-assistant --no-audit --no-fund) else (npm install --prefix realtime-background-assistant --no-audit --no-fund))"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "problemMatcher": []
+    }
+  ]
+}
