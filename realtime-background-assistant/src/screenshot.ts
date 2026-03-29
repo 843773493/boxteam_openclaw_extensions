@@ -108,19 +108,23 @@ function buildLinuxScreenshotCommand(outputPath: string): string[] {
 function buildWindowsScreenshotCommand(outputPath: string): string[] {
   const escapedPath = escapePowerShellSingleQuotedLiteral(outputPath);
   const script = [
+    "Add-Type -TypeDefinition @'\nusing System;\nusing System.Runtime.InteropServices;\npublic static class NativeMethods {\n  [DllImport(\"user32.dll\")] public static extern bool SetProcessDPIAware();\n  [DllImport(\"user32.dll\")] public static extern int GetSystemMetrics(int nIndex);\n}\n'@",
+    '[void][NativeMethods]::SetProcessDPIAware()',
     "Add-Type -AssemblyName System.Drawing",
-    "Add-Type -AssemblyName System.Windows.Forms",
-    "$bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen",
-    "$bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height",
+    "$left = [NativeMethods]::GetSystemMetrics(76)",
+    "$top = [NativeMethods]::GetSystemMetrics(77)",
+    "$width = [NativeMethods]::GetSystemMetrics(78)",
+    "$height = [NativeMethods]::GetSystemMetrics(79)",
+    "$bitmap = New-Object System.Drawing.Bitmap $width, $height",
     "$graphics = [System.Drawing.Graphics]::FromImage($bitmap)",
     "try {",
-    "  $graphics.CopyFromScreen($bounds.Left, $bounds.Top, 0, 0, $bitmap.Size)",
+    "  $graphics.CopyFromScreen($left, $top, 0, 0, $bitmap.Size)",
     `  $bitmap.Save('${escapedPath}', [System.Drawing.Imaging.ImageFormat]::Png)`,
     "} finally {",
     "  $graphics.Dispose()",
     "  $bitmap.Dispose()",
     "}",
-  ].join("; ");
+  ].join("\n");
   return ["powershell.exe", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script];
 }
 

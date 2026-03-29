@@ -1,9 +1,9 @@
 import os from "node:os";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-    __test_only__resetPreferredTmpDirCache,
-    __test_only__resolvePreferredOpenClawTmpDirCompat,
-    resolveDesktopScreenshotCommand,
+  __test_only__resetPreferredTmpDirCache,
+  __test_only__resolvePreferredOpenClawTmpDirCompat,
+  resolveDesktopScreenshotCommand,
 } from "./screenshot.js";
 
 describe("captureDesktopScreenshot tmp-dir resolution", () => {
@@ -48,6 +48,8 @@ describe("resolveDesktopScreenshotCommand", () => {
 
     expect(command[0]).toBe("powershell.exe");
     expect(command.join(" ")).toContain("CopyFromScreen");
+    expect(command.join(" ")).toContain("SetProcessDPIAware");
+    expect(command.join(" ")).toContain("GetSystemMetrics");
   });
 
   it("builds a macOS screencapture command", () => {

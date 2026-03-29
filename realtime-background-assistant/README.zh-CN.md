@@ -28,7 +28,6 @@ OpenClaw 插件提供：
 - `timeoutMs` - 可选，等待超时时间（毫秒）
 - `includeMessages` - 可选布尔值，设为 `true` 时返回会话消息
 - `maxMessages` - 可选，读取的最大消息数
-- `idempotencyKey` - 可选，请求键用于重试安全如果省略 `idempotencyKey`，插件现在会在调用子代理运行时之前自动生成一个。
 - `idempotencyKey` - 可选，请求键用于重试安全；如果省略，插件会在调用子代理运行时之前自动生成一个。
 
 ### 示例
