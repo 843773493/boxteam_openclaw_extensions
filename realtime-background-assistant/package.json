@@ -9,16 +9,18 @@
     "index.ts",
     "openclaw.plugin.json",
     "openclaw-plugin-sdk.d.ts",
+    "src/logger.ts",
     "src/config.ts",
+    "src/channel.ts",
     "src/screenshot.ts",
     "src/service.ts"
   ],
   "scripts": {
-    "pack:npm": "echo [打包] 生成 npm 发行包 && npm pack",
-    "pack:plugin": "echo [发布] 清理旧 tgz 并重新打包插件 && del /q lain14138-realtime-background-assistant-*.tgz 2>nul & npm pack",
-    "publish:openclaw": "echo [发布] 先卸载旧版本避免重复安装，再安装新包并校验 && (openclaw plugins uninstall realtime-background-assistant || echo [发布] 未检测到可卸载旧版本，继续) && npm run pack:plugin && for %f in (lain14138-realtime-background-assistant-*.tgz) do @openclaw plugins install %f && openclaw plugins inspect realtime-background-assistant --json",
-    "publish:openclaw:force": "echo [发布] 跳过卸载直接安装（仅在你确认无冲突时使用） && npm run pack:plugin && for %f in (lain14138-realtime-background-assistant-*.tgz) do @openclaw plugins install %f && openclaw plugins inspect realtime-background-assistant --json",
-    "publish:npm": "echo [发布] 先打包再发布到 npm registry && npm run pack:npm && npm publish --access public"
+    "pack:npm": "node ./scripts/package-ops.mjs pack-npm",
+    "pack:plugin": "node ./scripts/package-ops.mjs pack-plugin",
+    "publish:npm": "node ./scripts/package-ops.mjs publish-npm",
+    "publish:openclaw": "node ./scripts/upgrade-via-source.mjs",
+    "publish:openclaw:force": "node ./scripts/upgrade-via-source.mjs --force"
   },
   "dependencies": {
     "@sinclair/typebox": "0.34.48"

@@ -1,7 +1,7 @@
 {
   "id": "realtime-background-assistant",
   "name": "Realtime Background Assistant",
-  "description": "Desktop screenshot tool and local HTTP chat bridge for a background assistant.",
+  "description": "Desktop screenshot tool and channel/gateway HTTP bridge for a background assistant.",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -51,6 +51,27 @@
             "minimum": 1,
             "maximum": 200,
             "default": 50
+          },
+          "speak": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "endpoint": {
+                "type": "string",
+                "default": "http://127.0.0.1:8787/speak"
+              },
+              "agentIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "timeoutMs": {
+                "type": "number",
+                "minimum": 100,
+                "default": 3000
+              }
+            }
           }
         }
       },

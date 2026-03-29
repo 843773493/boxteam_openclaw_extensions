@@ -1,8 +1,14 @@
-import { randomUUID } from "node:crypto";
+/// <reference path="../node-shims.d.ts" />
+/// <reference path="../openclaw-plugin-sdk.d.ts" />
+
+import crypto from "node:crypto";
+import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import http from "node:http";
 import type { OpenClawPluginApi, OpenClawPluginService } from "openclaw/plugin-sdk/core";
 import { buildAgentMainSessionKey, normalizeAgentId } from "openclaw/plugin-sdk/routing";
+import { processChatRequest } from "./channel.js";
 import type { RealtimeBackgroundAssistantPluginConfig } from "./config.js";
+import { createAssistantLogger } from "./logger.js";
 
 type ChatRequestBody = {
   message?: string;
@@ -35,7 +41,11 @@ function asTrimmedString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function readJsonBody(req: http.IncomingMessage, maxBytes = 1_048_576): Promise<unknown> {
+function getRequestHeaders(req: IncomingMessage): Record<string, string | string[] | undefined> {
+  return (req as IncomingMessage & { headers?: Record<string, string | string[] | undefined> }).headers ?? {};
+}
+
+function readJsonBody(req: IncomingMessage, maxBytes = 1_048_576): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let received = 0;
@@ -68,7 +78,7 @@ function readJsonBody(req: http.IncomingMessage, maxBytes = 1_048_576): Promise<
   });
 }
 
-function sendJson(res: http.ServerResponse, statusCode: number, payload: ChatResponse | Record<string, unknown>) {
+function sendJson(res: ServerResponse, statusCode: number, payload: ChatResponse | Record<string, unknown>) {
   const json = JSON.stringify(payload, null, 2);
   res.statusCode = statusCode;
   res.setHeader("content-type", "application/json; charset=utf-8");
@@ -76,134 +86,72 @@ function sendJson(res: http.ServerResponse, statusCode: number, payload: ChatRes
   res.end(json);
 }
 
-function extractTextFromMessage(message: unknown): string | null {
-  if (!message || typeof message !== "object") {
-    return null;
-  }
-  const rec = message as Record<string, unknown>;
-  if (typeof rec.text === "string" && rec.text.trim()) {
-    return rec.text.trim();
-  }
-  const content = rec.content;
-  if (typeof content === "string") {
-    return content.trim() || null;
-  }
-  if (!Array.isArray(content)) {
-    return null;
-  }
-  const texts: string[] = [];
-  for (const part of content) {
-    if (!part || typeof part !== "object") {
-      continue;
-    }
-    const block = part as Record<string, unknown>;
-    if (typeof block.text === "string" && block.text.trim()) {
-      texts.push(block.text.trim());
-    }
-  }
-  const joined = texts.join("\n").trim();
-  return joined || null;
-}
-
-function resolveChatSessionKey(params: {
-  agentId: string;
-  conversationId?: string;
-  explicitSessionKey?: string;
-}): string {
-  const explicit = params.explicitSessionKey?.trim();
-  if (explicit) {
-    return explicit;
-  }
-  const conversationId = params.conversationId?.trim() || "main";
-  return buildAgentMainSessionKey({ agentId: params.agentId, mainKey: conversationId });
-}
-
 async function handleChatRequest(params: {
   api: OpenClawPluginApi;
   cfg: RealtimeBackgroundAssistantPluginConfig;
-  req: http.IncomingMessage;
-  res: http.ServerResponse;
+  req: IncomingMessage;
+  res: ServerResponse;
+  logger: ReturnType<typeof createAssistantLogger>;
 }): Promise<void> {
-  const body = (await readJsonBody(params.req)) as ChatRequestBody;
-  const message = asTrimmedString(body.message);
-  if (!message) {
-    sendJson(params.res, 400, { ok: false, error: "message is required" });
-    return;
-  }
-
-  const agentId = normalizeAgentId(
-    asTrimmedString(body.agentId) ?? params.cfg.assistant?.defaultAgentId ?? "main",
-  );
-  const conversationId =
-    asTrimmedString(body.conversationId) ?? params.cfg.assistant?.defaultConversationId ?? "main";
-  const sessionKey = resolveChatSessionKey({
-    agentId,
-    conversationId,
-    explicitSessionKey: asTrimmedString(body.sessionKey),
-  });
-  const systemPrompt =
-    asTrimmedString(body.systemPrompt) ?? params.cfg.assistant?.defaultSystemPrompt ?? undefined;
-  const timeoutMs =
-    typeof body.timeoutMs === "number" && Number.isFinite(body.timeoutMs) && body.timeoutMs > 0
-      ? body.timeoutMs
-      : params.cfg.assistant?.runTimeoutMs ?? 120_000;
-  const maxMessages =
-    typeof body.maxMessages === "number" && Number.isFinite(body.maxMessages) && body.maxMessages > 0
-      ? body.maxMessages
-      : params.cfg.assistant?.maxMessages ?? 50;
-  const idempotencyKey = asTrimmedString(body.idempotencyKey) ?? randomUUID();
-
+  const requestId = crypto.randomUUID();
+  const startedAt = Date.now();
   try {
-    const run = await params.api.runtime.subagent.run({
-      sessionKey,
-      message,
-      deliver: body.deliver ?? false,
-      ...(systemPrompt ? { extraSystemPrompt: systemPrompt } : {}),
-      ...(body.lane ? { lane: body.lane } : {}),
-      idempotencyKey,
+    params.logger.info("/chat 请求开始处理", {
+      context: {
+        requestId,
+        method: params.req.method ?? null,
+        url: params.req.url ?? null,
+        contentType: getRequestHeaders(params.req)["content-type"] ?? null,
+        contentLength: getRequestHeaders(params.req)["content-length"] ?? null,
+      },
     });
-
-    const wait = await params.api.runtime.subagent.waitForRun({
-      runId: run.runId,
-      timeoutMs,
+    const body = (await readJsonBody(params.req)) as ChatRequestBody;
+    params.logger.debug("/chat 请求体解析完成", {
+      context: {
+        requestId,
+        bodyKeys: body && typeof body === "object" ? Object.keys(body as Record<string, unknown>) : [],
+        hasMessage: Boolean((body as ChatRequestBody).message),
+        agentId: (body as ChatRequestBody).agentId ?? null,
+        conversationId: (body as ChatRequestBody).conversationId ?? null,
+        sessionKey: (body as ChatRequestBody).sessionKey ?? null,
+        idempotencyKey: (body as ChatRequestBody).idempotencyKey ?? null,
+      },
     });
-
-    const session = await params.api.runtime.subagent.getSessionMessages({
-      sessionKey,
-      limit: maxMessages,
+    const response = await processChatRequest({
+      api: params.api,
+      cfg: params.cfg,
+      body,
+      logger: params.logger,
     });
-    const messages = Array.isArray(session.messages) ? session.messages : [];
-    const lastAssistantMessage = [...messages]
-      .reverse()
-      .find((entry) => {
-        if (!entry || typeof entry !== "object") {
-          return false;
-        }
-        return (entry as Record<string, unknown>).role === "assistant";
-      });
-    const replyText = extractTextFromMessage(lastAssistantMessage);
-
-    const response: ChatResponse = {
-      ok: wait.status !== "error",
-      status: wait.status,
-      agentId,
-      conversationId,
-      sessionKey,
-      runId: run.runId,
-      assistantText: replyText,
-      messageCount: messages.length,
-      ...(body.includeMessages ? { messages } : {}),
-      ...(wait.error ? { error: wait.error } : {}),
-    };
-
-    sendJson(params.res, wait.status === "error" ? 500 : wait.status === "timeout" ? 202 : 200, response);
+    const statusCode = response.status === "error" ? 500 : response.status === "timeout" ? 202 : 200;
+    params.logger.info("/chat 请求处理完成并准备返回", {
+      context: {
+        requestId,
+        statusCode,
+        status: response.status,
+        runId: response.runId ?? null,
+        assistantTextPreview: response.assistantText?.slice(0, 160) ?? null,
+        messageCount: response.messageCount,
+        elapsedMs: Date.now() - startedAt,
+      },
+    });
+    sendJson(params.res, statusCode, response);
   } catch (error) {
+    params.logger.error("/chat 请求处理失败", {
+      context: {
+        requestId,
+        elapsedMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
+    const defaultAgentId = params.cfg.assistant?.defaultAgentId ?? "main";
+    const defaultConversationId = params.cfg.assistant?.defaultConversationId ?? "main";
     sendJson(params.res, 500, {
       ok: false,
       status: "error",
-      agentId,
-      conversationId,
-      sessionKey,
+      agentId: defaultAgentId,
+      conversationId: defaultConversationId,
+      sessionKey: `agent:${normalizeAgentId(defaultAgentId)}:${defaultConversationId}`,
       assistantText: null,
       messageCount: 0,
       error: error instanceof Error ? error.message : String(error),
@@ -212,44 +160,108 @@ async function handleChatRequest(params: {
 }
 
 export function createRealtimeBackgroundAssistantService(api: OpenClawPluginApi): OpenClawPluginService {
-  let server: http.Server | null = null;
+  let server: Server | null = null;
   let currentAddress: string | null = null;
+  const logger = createAssistantLogger({
+    consoleSink: api.logger,
+    scope: "realtime-background-assistant:service",
+  });
 
   return {
     id: "realtime-background-assistant-http",
-    async start(ctx) {
+    async start(_ctx: any) {
       const cfg = (api.pluginConfig ?? {}) as RealtimeBackgroundAssistantPluginConfig;
       const host = asTrimmedString(cfg.http?.host) ?? "127.0.0.1";
       const port = typeof cfg.http?.port === "number" ? cfg.http.port : 18_189;
       const basePath = (asTrimmedString(cfg.http?.basePath) ?? "/chat").replace(/\/$/, "") || "/chat";
 
-      server = http.createServer(async (req, res) => {
-        const url = new URL(req.url ?? "/", `http://${host}:${port || 0}`);
-        if (req.method === "GET" && url.pathname === "/health") {
-          sendJson(res, 200, {
-            ok: true,
-            plugin: api.id,
-            name: api.name,
-            address: currentAddress,
+      logger.info("HTTP chat 服务准备启动", {
+        console: true,
+        context: { host, port, basePath },
+      });
+
+      server = http.createServer(async (req: IncomingMessage, res: ServerResponse) => {
+        const requestId = crypto.randomUUID();
+        try {
+          const url = new URL(req.url ?? "/", `http://${host}:${port || 0}`);
+          const headers = getRequestHeaders(req);
+          logger.debug("收到 HTTP 请求", {
+            context: {
+              requestId,
+              method: req.method ?? null,
+              rawUrl: req.url ?? null,
+              pathname: url.pathname,
+              search: url.search,
+              contentType: headers["content-type"] ?? null,
+              contentLength: headers["content-length"] ?? null,
+            },
           });
-          return;
+          if (req.method === "GET" && url.pathname === "/health") {
+            logger.debug("命中 /health", { context: { requestId } });
+            sendJson(res, 200, {
+              ok: true,
+              plugin: api.id,
+              name: api.name,
+              address: currentAddress,
+            });
+            return;
+          }
+          if (req.method === "POST" && url.pathname === basePath) {
+            logger.debug("命中聊天路由", { context: { requestId, basePath } });
+            await handleChatRequest({ api, cfg, req, res, logger });
+            return;
+          }
+          if (req.method !== "GET" && req.method !== "POST") {
+            logger.warn("HTTP 方法不被支持", { context: { requestId, method: req.method ?? null } });
+            res.statusCode = 405;
+            res.setHeader("allow", "GET, POST");
+            res.end("Method Not Allowed");
+            return;
+          }
+          logger.debug("HTTP 路径未命中任何路由", {
+            context: {
+              requestId,
+              method: req.method ?? null,
+              pathname: url.pathname,
+              basePath,
+            },
+          });
+          res.statusCode = 404;
+          res.end("Not Found");
+        } catch (error) {
+          logger.error("HTTP 路由处理失败", {
+            context: {
+              requestId,
+              error: error instanceof Error ? error.message : String(error),
+            },
+          });
+          if (!res.headersSent) {
+            sendJson(res, 400, {
+              ok: false,
+              status: "error",
+              agentId: cfg.assistant?.defaultAgentId ?? "main",
+              conversationId: cfg.assistant?.defaultConversationId ?? "main",
+              sessionKey: buildAgentMainSessionKey({
+                agentId: cfg.assistant?.defaultAgentId ?? "main",
+                mainKey: cfg.assistant?.defaultConversationId ?? "main",
+              }),
+              assistantText: null,
+              messageCount: 0,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
         }
-        if (req.method === "POST" && url.pathname === basePath) {
-          await handleChatRequest({ api, cfg, req, res });
-          return;
-        }
-        if (req.method !== "GET" && req.method !== "POST") {
-          res.statusCode = 405;
-          res.setHeader("allow", "GET, POST");
-          res.end("Method Not Allowed");
-          return;
-        }
-        res.statusCode = 404;
-        res.end("Not Found");
       });
 
       await new Promise<void>((resolve, reject) => {
-        server?.once("error", reject);
+        server?.once("error", (error: unknown) => {
+          logger.error("HTTP 服务器监听失败", {
+            context: {
+              error: error instanceof Error ? error.message : String(error),
+            },
+          });
+          reject(error);
+        });
         server?.listen(port, host, () => {
           const address = server?.address();
           if (typeof address === "object" && address) {
@@ -257,14 +269,15 @@ export function createRealtimeBackgroundAssistantService(api: OpenClawPluginApi)
           } else {
             currentAddress = `${host}:${port}`;
           }
-          ctx.logger.info(
+          logger.info(
             `realtime-background-assistant: HTTP chat listening on ${currentAddress}${basePath}`,
+            { console: true },
           );
           resolve();
         });
       });
     },
-    async stop(ctx) {
+    async stop(_ctx: any) {
       if (!server) {
         return;
       }
@@ -273,7 +286,7 @@ export function createRealtimeBackgroundAssistantService(api: OpenClawPluginApi)
       });
       server = null;
       currentAddress = null;
-      ctx.logger.info("realtime-background-assistant: HTTP chat stopped");
+      logger.info("realtime-background-assistant: HTTP chat stopped", { console: true });
     },
   };
 }

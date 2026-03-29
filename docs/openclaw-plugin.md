@@ -26,7 +26,7 @@
 
 - `pack:plugin`：清理旧 tgz 后重新打包
 - `publish:openclaw`：先卸载旧版本，再安装新包并 inspect 校验
-- `publish:openclaw:force`：跳过卸载直接安装（仅在确认无冲突时使用）
+- `publish:openclaw:force`：直接清理目标扩展目录并复制源码目录，不调用 OpenClaw 安装机制
 
 执行命令：
 

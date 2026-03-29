@@ -1,7 +1,10 @@
-import { Type } from "@sinclair/typebox";
-import type { OpenClawPluginApi } from "openclaw/plugin-sdk/core";
+import { createAssistantLogger } from "./src/logger.js";
 import { captureDesktopScreenshot, type DesktopScreenshotConfig } from "./src/screenshot.js";
 import { createRealtimeBackgroundAssistantService } from "./src/service.js";
+
+type ChatRequestBody = {
+  message?: string;
+};
 
 function resolveScreenshotConfig(pluginConfig: Record<string, unknown> | undefined): DesktopScreenshotConfig {
   const screenshot = (pluginConfig?.screenshot ?? {}) as Record<string, unknown>;
@@ -11,14 +14,25 @@ function resolveScreenshotConfig(pluginConfig: Record<string, unknown> | undefin
   };
 }
 
-export default function register(api: OpenClawPluginApi) {
+export default function register(api: any) {
+  const logger = createAssistantLogger({
+    consoleSink: api.logger,
+    scope: "realtime-background-assistant:index",
+  });
+
+  api.registerService(createRealtimeBackgroundAssistantService(api));
+
   const screenshotConfig = resolveScreenshotConfig(api.pluginConfig);
 
   api.registerTool({
     name: "desktop_screenshot",
     label: "Desktop Screenshot",
     description: "Capture the full desktop and return the screenshot as an image block.",
-    parameters: Type.Object({}),
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {},
+    },
     async execute() {
       const screenshot = await captureDesktopScreenshot({
         runtime: api.runtime,
@@ -44,5 +58,5 @@ export default function register(api: OpenClawPluginApi) {
     },
   });
 
-  api.registerService(createRealtimeBackgroundAssistantService(api));
+  logger.info("realtime-background-assistant 插件启动成功", { console: true });
 }

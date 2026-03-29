@@ -5,6 +5,8 @@ OpenClaw 插件提供：
 - 桌面截图工具
 - 用于后台助手的本地 HTTP 聊天桥
 
+重要：这个插件必须按普通 full plugin 加载，不要在 `openclaw.plugin.json` 里把它声明成 channel 插件，否则 `registerService()` 不会真正生效，HTTP 服务器也不会启动。
+
 ## HTTP 接口
 
 该插件启动一个本地 HTTP 服务器。默认监听 `127.0.0.1:18189` 并暴露：
@@ -27,6 +29,7 @@ OpenClaw 插件提供：
 - `includeMessages` - 可选布尔值，设为 `true` 时返回会话消息
 - `maxMessages` - 可选，读取的最大消息数
 - `idempotencyKey` - 可选，请求键用于重试安全如果省略 `idempotencyKey`，插件现在会在调用子代理运行时之前自动生成一个。
+- `idempotencyKey` - 可选，请求键用于重试安全；如果省略，插件会在调用子代理运行时之前自动生成一个。
 
 ### 示例
 
@@ -35,6 +38,14 @@ curl -X POST http://127.0.0.1:18189/chat ^
   -H "content-type: application/json" ^
   -d "{\"message\":\"你好\"}"
 ```
+
+在 `cmd.exe` 里，建议直接用单行命令，避免 `^` 续行和引号转义被打坏：
+
+```bat
+curl.exe -sS -X POST "http://127.0.0.1:18189/chat" -H "content-type: application/json" --data-raw "{\"message\":\"[curl-test] 请回复: tester已收到这条消息\",\"agentId\":\"tester\",\"conversationId\":\"curl-check\",\"includeMessages\":true,\"maxMessages\":10,\"idempotencyKey\":\"curl-test-001\"}"
+```
+
+如果一定要分行，请确保 `^` 是该行最后一个字符，下一行直接从下一个参数开始，中间不要有空格。
 
 对于支持重试安全的客户端，也可以明确发送相同请求：
 
@@ -69,8 +80,12 @@ curl -X POST http://127.0.0.1:18189/chat ^
 
 - `defaultAgentId` - 默认代理 ID，默认 `main`
 - `defaultConversationId` - 默认会话 ID，默认 `main`
-- `defaultSystemPrompt` - 可选的额外系统提示`runTimeoutMs` - 助手运行的等待超时
+- `defaultSystemPrompt` - 可选的额外系统提示
+- `runTimeoutMs` - 助手运行的等待超时
 - `maxMessages` - 从会话中读取的消息数量
+- `speak.endpoint` - 本地文本转语音端点，默认 `http://127.0.0.1:8787/speak`
+- `speak.agentIds` - 需要把助手回复文本转发到 speak 端点的代理 ID 列表
+- `speak.timeoutMs` - speak 请求超时时间（毫秒）
 
 ### `screenshot`
 
