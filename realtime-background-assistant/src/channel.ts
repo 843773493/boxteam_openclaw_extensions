@@ -154,14 +154,30 @@ async function forwardSpeakMessage(params: {
   agentId: string;
   text: string;
   cfg: SpeakForwardConfig | null;
+  logger: AssistantLogger;
 }): Promise<void> {
   if (!params.cfg || !params.cfg.agentIds.has(params.agentId)) {
+    params.logger.debug("speak 转发已跳过", {
+      context: {
+        agentId: params.agentId,
+        hasConfig: Boolean(params.cfg),
+        textPreview: params.text.slice(0, 160),
+      },
+    });
     return;
   }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), params.cfg.timeoutMs);
   try {
+    params.logger.info("speak 远端转发开始", {
+      context: {
+        agentId: params.agentId,
+        endpoint: params.cfg.endpoint,
+        timeoutMs: params.cfg.timeoutMs,
+        text: params.text,
+      },
+    });
     const response = await fetch(params.cfg.endpoint, {
       method: "POST",
       headers: {
@@ -173,6 +189,14 @@ async function forwardSpeakMessage(params: {
     if (!response.ok) {
       throw new Error(`speak endpoint returned ${response.status}`);
     }
+    params.logger.info("speak 远端转发完成", {
+      context: {
+        agentId: params.agentId,
+        endpoint: params.cfg.endpoint,
+        responseStatus: response.status,
+        text: params.text,
+      },
+    });
   } finally {
     clearTimeout(timeout);
   }
@@ -246,6 +270,7 @@ export async function processChatRequest(params: {
   const speakMode = resolveSpeakForwardMode(params.body.speakMode);
   const speakForwardConfig = resolveSpeakForwardConfig(params.cfg);
   const logger = params.logger;
+  let streamedForwardCount = 0;
   const speakForwardStrategy = createSpeakForwardStrategy({
     mode: speakMode,
     forward: async (text: string) => {
@@ -253,6 +278,7 @@ export async function processChatRequest(params: {
         agentId,
         text,
         cfg: speakForwardConfig,
+        logger,
       });
     },
   });
@@ -346,18 +372,44 @@ export async function processChatRequest(params: {
         const text = asTrimmedString(payload.text);
         if (text) {
           deliveredParts.push(text);
+          if (speakMode === "stream") {
+            streamedForwardCount += 1;
+            logger.debug("speak 流式转发准备执行", {
+              context: {
+                agentId,
+                conversationId,
+                sessionKey,
+                chunkIndex: streamedForwardCount,
+                text,
+              },
+            });
+          }
           const streamedForward = speakForwardStrategy.onChunk(text);
           if (streamedForward) {
-            void streamedForward.catch((error: unknown) => {
-              logger.warn("speak 流式转发失败", {
-                context: {
-                  agentId,
-                  conversationId,
-                  sessionKey,
-                  error: error instanceof Error ? error.message : String(error),
-                },
+            const chunkIndex = streamedForwardCount;
+            void streamedForward
+              .then(() => {
+                logger.debug("speak 流式转发完成", {
+                  context: {
+                    agentId,
+                    conversationId,
+                    sessionKey,
+                    chunkIndex,
+                    text,
+                  },
+                });
+              })
+              .catch((error: unknown) => {
+                logger.warn("speak 流式转发失败", {
+                  context: {
+                    agentId,
+                    conversationId,
+                    sessionKey,
+                    chunkIndex,
+                    error: error instanceof Error ? error.message : String(error),
+                  },
+                });
               });
-            });
           }
         }
       },
@@ -428,6 +480,16 @@ export async function processChatRequest(params: {
         elapsedMs: Date.now() - startedAt,
       },
     });
+    logger.debug("speak 最终转发准备执行", {
+      context: {
+        agentId,
+        conversationId,
+        sessionKey,
+        speakMode,
+        usedStreamFallback: speakMode === "stream" && streamedForwardCount === 0,
+        text: assistantText,
+      },
+    });
     await speakForwardStrategy.onFinal(assistantText).catch((error: unknown) => {
       logger.warn("speak 转发失败", {
         context: {
@@ -437,6 +499,16 @@ export async function processChatRequest(params: {
           error: error instanceof Error ? error.message : String(error),
         },
       });
+    });
+    logger.debug("speak 最终转发完成", {
+      context: {
+        agentId,
+        conversationId,
+        sessionKey,
+        speakMode,
+        usedStreamFallback: speakMode === "stream" && streamedForwardCount === 0,
+        text: assistantText,
+      },
     });
   }
 
