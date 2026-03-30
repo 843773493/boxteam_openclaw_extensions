@@ -3,5 +3,8 @@ reference_repo/*
 .openclaw-debug/*
 **/openclaw.debug.json
 **/output/*
+!output/
+**/node_modules/*
 
+*.log
 .env

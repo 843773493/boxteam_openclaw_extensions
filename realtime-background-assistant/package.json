@@ -20,7 +20,9 @@
     "pack:plugin": "node ./scripts/package-ops.mjs pack-plugin",
     "publish:npm": "node ./scripts/package-ops.mjs publish-npm",
     "publish:openclaw": "node ./scripts/upgrade-via-source.mjs",
-    "publish:openclaw:force": "node ./scripts/upgrade-via-source.mjs --force"
+    "publish:openclaw:force": "node ./scripts/upgrade-via-source.mjs --force",
+    "test": "vitest run",
+    "test:integration": "vitest run src/screenshot.integration.test.ts"
   },
   "dependencies": {
     "@sinclair/typebox": "0.34.48"
@@ -40,5 +42,8 @@
     "install": {
       "minHostVersion": ">=2026.3.24"
     }
+  },
+  "devDependencies": {
+    "vitest": "^4.1.2"
   }
 }
