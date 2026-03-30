@@ -4,7 +4,7 @@ reference_repo/*
 **/openclaw.debug.json
 **/output/*
 !output/
-**/node_modules/*
+**/node_modules/
 
 *.log
 .env
