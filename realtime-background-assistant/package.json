@@ -1,6 +1,6 @@
 {
   "name": "@lain14138/realtime-background-assistant",
-  "version": "2026.3.12",
+  "version": "2026.3.13",
   "description": "OpenClaw realtime background assistant plugin",
   "type": "module",
   "files": [

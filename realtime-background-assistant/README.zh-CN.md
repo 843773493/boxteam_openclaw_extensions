@@ -29,6 +29,7 @@ OpenClaw 插件提供：
 - `includeMessages` - 可选布尔值，设为 `true` 时返回会话消息
 - `maxMessages` - 可选，读取的最大消息数
 - `idempotencyKey` - 可选，请求键用于重试安全；如果省略，插件会在调用子代理运行时之前自动生成一个。
+- `speakMode` - 可选，speak 转发模式，`batch` 表示等完整回复后一次性转发，`stream` 表示收到回复块时立即转发，默认 `batch`
 
 ### 示例
 

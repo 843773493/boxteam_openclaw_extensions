@@ -9,6 +9,7 @@ import { buildAgentMainSessionKey, normalizeAgentId } from "openclaw/plugin-sdk/
 import { normalizePluginHttpPath, registerPluginHttpRoute } from "openclaw/plugin-sdk/webhook-ingress";
 import type { RealtimeBackgroundAssistantPluginConfig } from "./config.js";
 import { createAssistantLogger, type AssistantLogger } from "./logger.js";
+import { createSpeakForwardStrategy, resolveSpeakForwardMode } from "./speak-forward.js";
 
 type ChatRequestBody = {
   message?: string;
@@ -25,6 +26,7 @@ type ChatRequestBody = {
   senderId?: string;
   provider?: string;
   surface?: string;
+  speakMode?: "batch" | "stream";
 };
 
 type ChatResponse = {
@@ -241,8 +243,19 @@ export async function processChatRequest(params: {
     typeof params.body.maxMessages === "number" && Number.isFinite(params.body.maxMessages) && params.body.maxMessages > 0
       ? params.body.maxMessages
       : params.cfg.assistant?.maxMessages ?? 50;
+  const speakMode = resolveSpeakForwardMode(params.body.speakMode);
   const speakForwardConfig = resolveSpeakForwardConfig(params.cfg);
   const logger = params.logger;
+  const speakForwardStrategy = createSpeakForwardStrategy({
+    mode: speakMode,
+    forward: async (text: string) => {
+      await forwardSpeakMessage({
+        agentId,
+        text,
+        cfg: speakForwardConfig,
+      });
+    },
+  });
 
   logger.debug("收到 /chat 请求", {
     context: {
@@ -254,6 +267,7 @@ export async function processChatRequest(params: {
       timeoutMs: params.body.timeoutMs ?? null,
       includeMessages: params.body.includeMessages ?? false,
       maxMessages: params.body.maxMessages ?? null,
+      speakMode,
       idempotencyKey,
     },
   });
@@ -268,6 +282,7 @@ export async function processChatRequest(params: {
       hasSystemPrompt: Boolean(params.body.systemPrompt),
       deliver: params.body.deliver ?? false,
       lane: params.body.lane ?? null,
+      speakMode,
     },
   });
   const ctxPayload = buildChannelContext({
@@ -318,6 +333,7 @@ export async function processChatRequest(params: {
       sessionKey,
       deliver: params.body.deliver ?? false,
       lane: params.body.lane ?? null,
+      speakMode,
       timeoutMs: params.body.timeoutMs ?? params.cfg.assistant?.runTimeoutMs ?? null,
     },
   });
@@ -330,6 +346,19 @@ export async function processChatRequest(params: {
         const text = asTrimmedString(payload.text);
         if (text) {
           deliveredParts.push(text);
+          const streamedForward = speakForwardStrategy.onChunk(text);
+          if (streamedForward) {
+            void streamedForward.catch((error: unknown) => {
+              logger.warn("speak 流式转发失败", {
+                context: {
+                  agentId,
+                  conversationId,
+                  sessionKey,
+                  error: error instanceof Error ? error.message : String(error),
+                },
+              });
+            });
+          }
         }
       },
       onError: (error, info) => {
@@ -395,14 +424,11 @@ export async function processChatRequest(params: {
         conversationId,
         sessionKey,
         assistantTextPreview: assistantText.slice(0, 160),
+        speakMode,
         elapsedMs: Date.now() - startedAt,
       },
     });
-    await forwardSpeakMessage({
-      agentId,
-      text: assistantText,
-      cfg: speakForwardConfig,
-    }).catch((error: unknown) => {
+    await speakForwardStrategy.onFinal(assistantText).catch((error: unknown) => {
       logger.warn("speak 转发失败", {
         context: {
           agentId,
@@ -422,6 +448,7 @@ export async function processChatRequest(params: {
       assistantTextPreview: assistantText?.slice(0, 160) ?? null,
       messageCount: messages.length,
       includeMessages: params.body.includeMessages ?? false,
+      speakMode,
       deliveredPartCount: deliveredParts.length,
       elapsedMs: Date.now() - startedAt,
     },
