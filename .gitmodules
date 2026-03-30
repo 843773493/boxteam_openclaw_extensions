@@ -1,0 +1,6 @@
+[submodule "reference_repo/openclaw"]
+	path = reference_repo/openclaw
+	url = https://github.com/openclaw/openclaw.git
+[submodule "reference_repo/openclaw-qqbot"]
+	path = reference_repo/openclaw-qqbot
+	url = https://github.com/tencent-connect/openclaw-qqbot.git
