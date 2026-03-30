@@ -1,5 +1,6 @@
 reference_repo/*
 !reference_repo/
+!reference_repo/.gitkeep
 .openclaw-debug/*
 **/openclaw.debug.json
 **/output/*
