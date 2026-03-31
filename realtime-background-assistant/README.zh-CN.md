@@ -19,6 +19,7 @@ OpenClaw 插件提供：
 请求体字段：
 
 - `message` - 必须，用户消息
+- `attachments` - 可选图片附件数组，每项需要 `content`（base64 或 data URL）和 `mimeType`（`image/*`）
 - `agentId` - 可选，代理 ID，默认为 `main`
 - `conversationId` - 可选，会话 ID，默认为 `main`
 - `sessionKey` - 可选，显式会话键
@@ -54,6 +55,16 @@ curl -X POST http://127.0.0.1:18189/chat ^
   -H "content-type: application/json" ^
   -d "{\"message\":\"你好\",\"idempotencyKey\":\"chat-001\"}"
 ```
+
+如果要上传图片，可以在同一个 JSON 请求里带上 `attachments`：
+
+```bash
+curl -X POST http://127.0.0.1:18189/chat ^
+  -H "content-type: application/json" ^
+  -d "{\"message\":\"看看这张图\",\"attachments\":[{\"type\":\"image\",\"mimeType\":\"image/png\",\"fileName\":\"screenshot.png\",\"content\":\"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/woAAn8B9FD5fHAAAAAASUVORK5CYII=\"}]}"
+```
+
+`content` 也可以直接传 `data:image/...;base64,...` 字符串。支持多个图片附件，顺序会原样传给助手。
 
 ### 响应
 

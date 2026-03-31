@@ -19,6 +19,7 @@ The plugin starts a local HTTP server. By default it listens on `127.0.0.1:18189
 Request body fields:
 
 - `message` - required user message
+- `attachments` - optional image attachments, each object should include `content` (base64 or data URL) and `mimeType` (`image/*`)
 - `agentId` - optional agent id, defaults to `main`
 - `conversationId` - optional conversation id, defaults to `main`
 - `sessionKey` - optional explicit session key
@@ -55,6 +56,16 @@ curl -X POST http://127.0.0.1:18189/chat ^
   -H "content-type: application/json" ^
   -d "{\"message\":\"你好\",\"idempotencyKey\":\"chat-001\"}"
 ```
+
+To upload images, include base64 attachments in the same JSON request:
+
+```bash
+curl -X POST http://127.0.0.1:18189/chat ^
+  -H "content-type: application/json" ^
+  -d "{\"message\":\"看看这张图\",\"attachments\":[{\"type\":\"image\",\"mimeType\":\"image/png\",\"fileName\":\"screenshot.png\",\"content\":\"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/woAAn8B9FD5fHAAAAAASUVORK5CYII=\"}]}"
+```
+
+`content` can also be a `data:image/...;base64,...` string. Multiple image attachments are allowed and are passed to the assistant in order.
 
 ### Response
 

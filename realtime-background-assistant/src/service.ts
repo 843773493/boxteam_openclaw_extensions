@@ -7,11 +7,13 @@ import http from "node:http";
 import type { OpenClawPluginApi, OpenClawPluginService } from "openclaw/plugin-sdk/core";
 import { buildAgentMainSessionKey, normalizeAgentId } from "openclaw/plugin-sdk/routing";
 import { processChatRequest } from "./channel.js";
+import { type ChatAttachment } from "./chat-attachments.js";
 import type { RealtimeBackgroundAssistantPluginConfig } from "./config.js";
 import { createAssistantLogger } from "./logger.js";
 
 type ChatRequestBody = {
   message?: string;
+  attachments?: ChatAttachment[];
   agentId?: string;
   conversationId?: string;
   sessionKey?: string;
@@ -105,12 +107,15 @@ async function handleChatRequest(params: {
         contentLength: getRequestHeaders(params.req)["content-length"] ?? null,
       },
     });
-    const body = (await readJsonBody(params.req)) as ChatRequestBody;
+    const body = (await readJsonBody(params.req, 20_000_000)) as ChatRequestBody;
     params.logger.debug("/chat 请求体解析完成", {
       context: {
         requestId,
         bodyKeys: body && typeof body === "object" ? Object.keys(body as Record<string, unknown>) : [],
         hasMessage: Boolean((body as ChatRequestBody).message),
+        attachmentCount: Array.isArray((body as ChatRequestBody).attachments)
+          ? (body as ChatRequestBody).attachments?.length ?? 0
+          : 0,
         agentId: (body as ChatRequestBody).agentId ?? null,
         conversationId: (body as ChatRequestBody).conversationId ?? null,
         sessionKey: (body as ChatRequestBody).sessionKey ?? null,

@@ -9,6 +9,7 @@
     "index.ts",
     "openclaw.plugin.json",
     "openclaw-plugin-sdk.d.ts",
+    "src/chat-attachments.ts",
     "src/logger.ts",
     "src/config.ts",
     "src/channel.ts",
@@ -21,6 +22,7 @@
     "publish:npm": "node ./scripts/package-ops.mjs publish-npm",
     "publish:openclaw": "node ./scripts/upgrade-via-source.mjs",
     "publish:openclaw:force": "node ./scripts/upgrade-via-source.mjs --force",
+    "agent:e2e": "node ./scripts/agent/bootstrap-local-e2e.mjs",
     "test": "vitest run",
     "test:integration": "vitest run src/screenshot.integration.test.ts"
   },

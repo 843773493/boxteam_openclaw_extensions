@@ -7,12 +7,14 @@ import { createChannelPluginBase } from "openclaw/plugin-sdk/core";
 import type { OutboundReplyPayload } from "openclaw/plugin-sdk/reply-payload";
 import { buildAgentMainSessionKey, normalizeAgentId } from "openclaw/plugin-sdk/routing";
 import { normalizePluginHttpPath, registerPluginHttpRoute } from "openclaw/plugin-sdk/webhook-ingress";
+import { parseImageAttachments, type ChatAttachment } from "./chat-attachments.js";
 import type { RealtimeBackgroundAssistantPluginConfig } from "./config.js";
 import { createAssistantLogger, type AssistantLogger } from "./logger.js";
 import { createSpeakForwardStrategy, resolveSpeakForwardMode } from "./speak-forward.js";
 
 type ChatRequestBody = {
   message?: string;
+  attachments?: ChatAttachment[];
   agentId?: string;
   conversationId?: string;
   sessionKey?: string;
@@ -214,8 +216,11 @@ function buildChannelContext(params: {
   sessionKey: string;
   message: string;
   idempotencyKey: string;
+  media: Array<{ path: string; mimeType: string }>;
   body: ChatRequestBody;
 }): FinalizedMsgContext {
+  const mediaPaths = params.media.map((entry) => entry.path);
+  const mediaTypes = params.media.map((entry) => entry.mimeType);
   const ctx = params.api.runtime.channel.reply.finalizeInboundContext({
     Body: params.message,
     BodyForAgent: params.message,
@@ -237,6 +242,14 @@ function buildChannelContext(params: {
     OriginatingChannel: params.body.provider ?? "realtime-background-assistant",
     OriginatingTo: params.conversationId,
     CommandAuthorized: true,
+    ...(mediaPaths.length > 0
+      ? {
+          MediaPath: mediaPaths[0],
+          MediaPaths: mediaPaths,
+          MediaType: mediaTypes[0],
+          MediaTypes: mediaTypes,
+        }
+      : {}),
   });
 
   return ctx;
@@ -254,6 +267,10 @@ export async function processChatRequest(params: {
     throw new Error("message is required");
   }
 
+  const media = await parseImageAttachments({
+    attachments: params.body.attachments,
+    maxBytes: 10_000_000,
+  });
   const agentId = normalizeAgentId(
     asTrimmedString(params.body.agentId) ?? params.cfg.assistant?.defaultAgentId ?? "main",
   );
@@ -270,6 +287,18 @@ export async function processChatRequest(params: {
   const speakMode = resolveSpeakForwardMode(params.body.speakMode);
   const speakForwardConfig = resolveSpeakForwardConfig(params.cfg);
   const logger = params.logger;
+  if (media.length > 0) {
+    logger.debug("图片附件解析完成", {
+      context: {
+        agentId,
+        conversationId,
+        sessionKey,
+        attachmentCount: media.length,
+        imageUrls: media.map((entry) => entry.path),
+        imageTypes: media.map((entry) => entry.mimeType),
+      },
+    });
+  }
   let streamedForwardCount = 0;
   const speakForwardStrategy = createSpeakForwardStrategy({
     mode: speakMode,
@@ -293,6 +322,7 @@ export async function processChatRequest(params: {
       timeoutMs: params.body.timeoutMs ?? null,
       includeMessages: params.body.includeMessages ?? false,
       maxMessages: params.body.maxMessages ?? null,
+      attachmentCount: media.length,
       speakMode,
       idempotencyKey,
     },
@@ -306,6 +336,7 @@ export async function processChatRequest(params: {
       messagePreview: message.slice(0, 120),
       bodyKeys: Object.keys(params.body ?? {}),
       hasSystemPrompt: Boolean(params.body.systemPrompt),
+      attachmentCount: media.length,
       deliver: params.body.deliver ?? false,
       lane: params.body.lane ?? null,
       speakMode,
@@ -318,6 +349,7 @@ export async function processChatRequest(params: {
     sessionKey,
     message,
     idempotencyKey,
+    media,
     body: params.body,
   });
 
@@ -599,7 +631,7 @@ export function createRealtimeBackgroundAssistantChannelPlugin(api: OpenClawPlug
 
         const respondChat = async (req: IncomingMessage, res: ServerResponse) => {
           try {
-            const body = (await readJsonBody(req)) as ChatRequestBody;
+            const body = (await readJsonBody(req, 20_000_000)) as ChatRequestBody;
             const response = await processChatRequest({
               api: runtimeApi,
               cfg,
