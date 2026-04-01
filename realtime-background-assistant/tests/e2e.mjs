@@ -17,6 +17,21 @@ import { sendChatRequest } from '../src/utils/e2e-request.js';
  */
 const chatEndpointUrl = 'http://127.0.0.1:18189/chat';
 
+function createPayloadForLog(payload) {
+    if (!payload?.attachments?.length) {
+        return payload;
+    }
+
+    return {
+        ...payload,
+        attachments: payload.attachments.map((attachment) => ({
+            ...attachment,
+            content: '<base64 omitted>',
+            contentLength: typeof attachment.content === 'string' ? attachment.content.length : undefined,
+        })),
+    };
+}
+
 /**
  * 打印一个测试场景的请求体和结果。
  *
@@ -29,7 +44,7 @@ const chatEndpointUrl = 'http://127.0.0.1:18189/chat';
 async function runScenario(name, description, payload) {
     console.log(`=== ${name} ===`);
     console.log(description);
-    console.log(JSON.stringify(payload, null, 2));
+    console.log(JSON.stringify(createPayloadForLog(payload), null, 2));
 
     const result = await sendChatRequest(payload, { endpointUrl: chatEndpointUrl });
     console.log(JSON.stringify(result, null, 2));
@@ -62,8 +77,8 @@ async function runImageTest() {
         includeMessages: true,
         maxMessages: 10,
         // 这条消息本身说明了测试目标：让 tester 直接回答图片里的时间。
-        message: '[curl-test] 请回复: tester已收到这条消息，并告诉我图中右下角的时间',
-        idempotencyKey: 'curl-test-003',
+        message: '[curl-test] 不调用任何tool，直接回答，请回复: tester是否已收到这条消息和图片？然后告诉我图中是否为完整屏幕截图，打开的软件叫什么，标签页中的仓库叫什么名称,图中右下角的时间是不是1:59，3月31日？',
+        // idempotencyKey: 'curl-test-003',
         attachments: [
             {
                 type: 'image',
@@ -134,43 +149,47 @@ async function runStreamTest() {
 }
 
 /**
- * 根据命令行参数选择运行方式。
+ * 测试函数注册表。
  *
- * 支持的模式如下：
- * - all：一次跑完图片、纯文本、流式三个测试，适合做完整回归。
- * - image：只跑图片测试，适合排查附件链路。
- * - text：只跑纯文本测试，适合排查最基础的聊天链路。
- * - stream：只跑流式测试，适合排查 speakMode=stream 是否生效。
+ * 这里直接用函数名作为键，命令行传入什么函数名，就运行什么函数。
+ * 这样后续新增测试时，只要把新函数挂到这个对象里，就不需要再改
+ * 一长串 if/else 或 mode 映射逻辑。
+ */
+const testRunners = {
+    runImageTest,
+    runTextTest,
+    runStreamTest,
+};
+
+/**
+ * 根据命令行参数选择并运行测试函数。
  *
- * 默认值是 all，这样直接执行脚本时就能一键跑完整验证流程。
+ * 运行方式改成“函数名直传”之后，脚本的调用方式会更直观：
+ * - node tests/e2e.js runTextTest
+ * - node tests/e2e.js runStreamTest
+ * - node tests/e2e.js runImageTest
+ *
+ * 如果不传参数，则按注册表顺序把所有测试都跑一遍，方便一次性回归。
  */
 async function main() {
-    const mode = process.argv[2] ?? 'all';
+    const runnerName = process.argv[2];
 
-    if (mode === 'all') {
-        await runImageTest();
-        await runTextTest();
-        await runStreamTest();
+    if (!runnerName) {
+        for (const runner of Object.values(testRunners)) {
+            await runner();
+        }
         return;
     }
 
-    if (mode === 'image') {
-        await runImageTest();
+    const runner = testRunners[runnerName];
+    if (!runner) {
+        console.error(`未找到测试函数: ${runnerName}`);
+        console.error(`可用函数: ${Object.keys(testRunners).join(', ')}`);
+        process.exitCode = 1;
         return;
     }
 
-    if (mode === 'text') {
-        await runTextTest();
-        return;
-    }
-
-    if (mode === 'stream') {
-        await runStreamTest();
-        return;
-    }
-
-    console.error('用法: node tests/e2e.js [all|image|text|stream]');
-    process.exitCode = 1;
+    await runner();
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -180,5 +199,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     });
 }
 
-export { runImageTest, runStreamTest, runTextTest };
+export { runImageTest, runStreamTest, runTextTest, testRunners };
 

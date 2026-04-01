@@ -39,6 +39,8 @@ describe("parseImageAttachments", () => {
     expect(media).toHaveLength(2);
     expect(media[0]?.mimeType).toBe("image/png");
     expect(media[1]?.mimeType).toBe("image/png");
+    expect(media[0]?.data).toBe(PNG_1X1);
+    expect(media[1]?.data).toBe(PNG_1X1);
     await expect(fs.readFile(media[0]!.path)).resolves.toEqual(Buffer.from(PNG_1X1, "base64"));
     await expect(fs.readFile(media[1]!.path)).resolves.toEqual(Buffer.from(PNG_1X1, "base64"));
   });

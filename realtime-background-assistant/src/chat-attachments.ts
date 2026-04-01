@@ -13,6 +13,7 @@ export type ChatAttachment = {
 export type ChatAttachmentMedia = {
   path: string;
   mimeType: string;
+  data: string;
   bytes: number;
 };
 
@@ -146,6 +147,7 @@ export async function parseImageAttachments(params: {
     media.push({
       path: filePath,
       mimeType,
+      data: base64,
       bytes,
     });
   }

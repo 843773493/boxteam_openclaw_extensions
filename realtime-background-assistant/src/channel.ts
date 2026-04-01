@@ -216,7 +216,7 @@ function buildChannelContext(params: {
   sessionKey: string;
   message: string;
   idempotencyKey: string;
-  media: Array<{ path: string; mimeType: string }>;
+  media: Array<{ path: string; mimeType: string; data: string }>;
   body: ChatRequestBody;
 }): FinalizedMsgContext {
   const mediaPaths = params.media.map((entry) => entry.path);
@@ -245,7 +245,9 @@ function buildChannelContext(params: {
     ...(mediaPaths.length > 0
       ? {
           MediaPath: mediaPaths[0],
+          MediaUrl: mediaPaths[0],
           MediaPaths: mediaPaths,
+          MediaUrls: mediaPaths,
           MediaType: mediaTypes[0],
           MediaTypes: mediaTypes,
         }
@@ -271,6 +273,11 @@ export async function processChatRequest(params: {
     attachments: params.body.attachments,
     maxBytes: 10_000_000,
   });
+  const replyImages = media.map((entry) => ({
+    type: "image" as const,
+    data: entry.data,
+    mimeType: entry.mimeType,
+  }));
   const agentId = normalizeAgentId(
     asTrimmedString(params.body.agentId) ?? params.cfg.assistant?.defaultAgentId ?? "main",
   );
@@ -369,7 +376,7 @@ export async function processChatRequest(params: {
     storePath: resolveStorePath(params.api, agentId),
     sessionKey,
     ctx: ctxPayload,
-    onRecordError: (error) => {
+    onRecordError: (error: unknown) => {
       throw error instanceof Error ? error : new Error(String(error));
     },
   });
@@ -399,6 +406,7 @@ export async function processChatRequest(params: {
   await runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
     ctx: ctxPayload,
     cfg: params.api.config as OpenClawConfig,
+    replyOptions: replyImages.length > 0 ? { images: replyImages } : undefined,
     dispatcherOptions: {
       deliver: async (payload: OutboundReplyPayload) => {
         const text = asTrimmedString(payload.text);
@@ -445,7 +453,7 @@ export async function processChatRequest(params: {
           }
         }
       },
-      onError: (error, info) => {
+      onError: (error: unknown, info: { kind: string }) => {
         throw new Error(
           `${info.kind} dispatch failed: ${error instanceof Error ? error.message : String(error)}`,
         );

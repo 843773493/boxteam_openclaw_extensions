@@ -44,6 +44,8 @@ declare module "node:http" {
 }
 
 declare module "node:crypto" {
+  export function randomUUID(): string;
+
   const crypto: {
     randomUUID(): string;
   };

@@ -8,6 +8,12 @@ function createMockApi() {
   const finalizeInboundContext = vi.fn((ctx: unknown) => ctx);
   const recordInboundSession = vi.fn().mockResolvedValue(undefined);
   const dispatchReplyWithBufferedBlockDispatcher = vi.fn(async (params: any) => {
+    expect(params.replyOptions?.images).toHaveLength(1);
+    expect(params.replyOptions?.images?.[0]).toMatchObject({
+      type: "image",
+      mimeType: "image/png",
+      data: PNG_1X1,
+    });
     await params.dispatcherOptions.deliver({ text: "图片已收到" });
   });
   const getSessionMessages = vi.fn().mockResolvedValue({ messages: [] });
@@ -72,9 +78,11 @@ describe("processChatRequest", () => {
 
     expect(api.runtime.channel.reply.finalizeInboundContext).toHaveBeenCalledTimes(1);
     const input = api.runtime.channel.reply.finalizeInboundContext.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(input.Body).toBe("请看图");
+    expect(input.BodyForAgent).toBe("请看图");
     expect(input.MediaPath).toEqual(expect.stringContaining("test_desktop.png"));
     expect(input.MediaPaths).toEqual([input.MediaPath]);
-    expect(input.MediaUrl).toBeUndefined();
-    expect(input.MediaUrls).toBeUndefined();
+    expect(input.MediaUrl).toEqual(input.MediaPath);
+    expect(input.MediaUrls).toEqual([input.MediaPath]);
   });
 });
