@@ -9,3 +9,4 @@ reference_repo/*
 
 *.log
 .env
+.kilo/*
