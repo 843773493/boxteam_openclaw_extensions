@@ -1,39 +1,38 @@
 import os from "node:os";
-import { beforeEach, describe, expect, it } from "vitest";
-import {
-  __test_only__resetPreferredTmpDirCache,
-  __test_only__resolvePreferredOpenClawTmpDirCompat,
-  resolveDesktopScreenshotCommand,
-} from "./screenshot.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resolveDesktopScreenshotCommand } from "./screenshot.js";
 
 describe("captureDesktopScreenshot tmp-dir resolution", () => {
-  beforeEach(() => {
-    __test_only__resetPreferredTmpDirCache();
-  });
-
   it("prefers infra-runtime helper when available", async () => {
-    const resolved = await __test_only__resolvePreferredOpenClawTmpDirCompat({
-      importer: async (moduleName) => {
-        if (moduleName === "openclaw/plugin-sdk/infra-runtime") {
-          return {
-            resolvePreferredOpenClawTmpDir: () => "/tmp/openclaw-preferred",
-          };
-        }
-        return {};
-      },
+    const importer = vi.fn(async (moduleName: string) => {
+      if (moduleName === "openclaw/plugin-sdk/infra-runtime") {
+        return {
+          resolvePreferredOpenClawTmpDir: () => "/tmp/openclaw-preferred",
+        };
+      }
+      return {};
     });
 
+    const { __test_only__resolvePreferredOpenClawTmpDirCompat, __test_only__resetPreferredTmpDirCache } =
+      await import("./screenshot.js");
+
+    __test_only__resetPreferredTmpDirCache();
+    const resolved = await __test_only__resolvePreferredOpenClawTmpDirCompat({ importer });
+
     expect(resolved).toBe("/tmp/openclaw-preferred");
+    expect(importer).toHaveBeenCalled();
   });
 
   it("falls back to os.tmpdir when helper is missing", async () => {
-    const resolved = await __test_only__resolvePreferredOpenClawTmpDirCompat({
-      importer: async () => {
-        return {
-          resolvePreferredOpenClawTmpDir: undefined,
-        };
-      },
-    });
+    const importer = vi.fn(async () => ({
+      resolvePreferredOpenClawTmpDir: undefined,
+    }));
+
+    const { __test_only__resolvePreferredOpenClawTmpDirCompat, __test_only__resetPreferredTmpDirCache } =
+      await import("./screenshot.js");
+
+    __test_only__resetPreferredTmpDirCache();
+    const resolved = await __test_only__resolvePreferredOpenClawTmpDirCompat({ importer });
 
     expect(resolved).toBe(os.tmpdir());
   });

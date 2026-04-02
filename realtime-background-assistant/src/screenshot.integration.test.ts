@@ -3,60 +3,72 @@ import { copyFile, mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { describe, expect, it, vi } from "vitest";
+import type { PluginRuntime } from "openclaw/plugin-sdk/core";
 import { captureDesktopScreenshot } from "./screenshot.js";
 
-function createIntegrationRuntime() {
+function createMockRuntime(): PluginRuntime {
   return {
     system: {
-      runCommandWithTimeout(command: string[], options: { timeoutMs: number; env?: Record<string, string> }) {
-        const result = spawnSync(command[0], command.slice(1), {
-          env: {
-            ...process.env,
-            ...options.env,
-          },
-          shell: false,
-          stdio: "inherit",
-          timeout: options.timeoutMs,
-        });
+      runCommandWithTimeout: vi.fn(
+        (command: string[], options: { timeoutMs: number; env?: Record<string, string> }) => {
+          const result = spawnSync(command[0], command.slice(1), {
+            env: {
+              ...process.env,
+              ...options.env,
+            },
+            shell: false,
+            stdio: "inherit",
+            timeout: options.timeoutMs,
+          });
 
-        if (result.error) {
-          throw result.error;
-        }
+          if (result.error) {
+            throw result.error;
+          }
 
-        if (result.status !== 0) {
-          throw new Error(`screenshot command failed with exit code ${result.status ?? "unknown"}`);
-        }
-      },
+          if (result.status !== 0) {
+            throw new Error(`screenshot command failed with exit code ${result.status ?? "unknown"}`);
+          }
+        },
+      ),
     },
     media: {
-      async getImageMetadata() {
-        return undefined;
-      },
+      getImageMetadata: vi.fn().mockResolvedValue(undefined),
     },
-  };
+  } as unknown as PluginRuntime;
 }
 
-test("captures a desktop screenshot and copies it into output", async () => {
-  if (process.platform !== "win32") {
-    return;
-  }
+describe("captureDesktopScreenshot integration", () => {
+  it("captures a desktop screenshot and copies it into output", async () => {
+    if (process.platform !== "win32") {
+      return;
+    }
 
-  const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-  const outputDir = path.join(packageRoot, "output");
+    const runtime = createMockRuntime();
 
-  await mkdir(outputDir, { recursive: true });
+    const runCommandWithTimeout = runtime.system.runCommandWithTimeout as ReturnType<typeof vi.fn>;
+    const getImageMetadata = runtime.media.getImageMetadata as ReturnType<typeof vi.fn>;
 
-  const result = await captureDesktopScreenshot({
-    runtime: createIntegrationRuntime() as never,
-    config: {
-      timeoutMs: 30_000,
-      maxBytes: 20 * 1024 * 1024,
-    },
+    const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+    const outputDir = path.join(packageRoot, "output");
+
+    await mkdir(outputDir, { recursive: true });
+
+    const result = await captureDesktopScreenshot({
+      runtime,
+      config: {
+        timeoutMs: 30_000,
+        maxBytes: 20 * 1024 * 1024,
+      },
+    });
+
+    expect(runCommandWithTimeout).toHaveBeenCalledTimes(1);
+    expect(getImageMetadata).toHaveBeenCalledTimes(1);
+
+    const outputPath = path.join(outputDir, `integration-${Date.now()}.png`);
+    await copyFile(result.path, outputPath);
+
+    const outputStat = await stat(outputPath);
+    expect(outputStat.size).toBeGreaterThan(0);
   });
-
-  const outputPath = path.join(outputDir, `integration-${Date.now()}.png`);
-  await copyFile(result.path, outputPath);
-
-  const outputStat = await stat(outputPath);
-  expect(outputStat.size).toBeGreaterThan(0);
 });

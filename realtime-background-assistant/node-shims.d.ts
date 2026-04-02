@@ -6,9 +6,11 @@ declare class Buffer {
   readonly byteLength: number;
   toString(encoding?: string): string;
   static isBuffer(value: unknown): value is Buffer;
-  static from(value: string): Buffer;
+  static from(value: string, encoding?: string): Buffer;
+  static from(arrayBuffer: ArrayBufferLike, byteOffset?: number, length?: number): Buffer;
+  static from(value: Uint8Array): Buffer;
   static concat(buffers: Buffer[]): Buffer;
-  static byteLength(value: string): number;
+  static byteLength(value: string, encoding?: string): number;
 }
 
 declare module "node:http" {
@@ -66,6 +68,9 @@ declare module "node:fs/promises" {
   const fs: {
     mkdir(path: string, options?: { recursive?: boolean }): Promise<void>;
     readFile(path: string): Promise<Uint8Array>;
+    writeFile(path: string, data: string | Buffer | Uint8Array, options?: { encoding?: string }): Promise<void>;
+    rm(path: string, options?: { recursive?: boolean; force?: boolean }): Promise<void>;
+    copyFile(src: string, dest: string): Promise<void>;
   };
 
   export default fs;
@@ -81,9 +86,20 @@ declare module "node:os" {
 }
 
 declare module "node:path" {
+  type ParsedPath = {
+    root: string;
+    dir: string;
+    base: string;
+    ext: string;
+    name: string;
+  };
+
   const path: {
     dirname(path: string): string;
     join(...parts: string[]): string;
+    parse(path: string): ParsedPath;
+    resolve(...parts: string[]): string;
+    extname(path: string): string;
   };
 
   export default path;

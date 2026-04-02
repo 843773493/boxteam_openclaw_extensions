@@ -174,13 +174,14 @@ export async function captureDesktopScreenshot(params: {
     env,
   });
 
-  const buffer = await fs.readFile(outputPath);
-  if (buffer.byteLength > params.config.maxBytes) {
+  const raw = await fs.readFile(outputPath);
+  if (raw.byteLength > params.config.maxBytes) {
     throw new Error(
-      `Desktop screenshot exceeded size limit (${buffer.byteLength} > ${params.config.maxBytes} bytes)`,
+      `Desktop screenshot exceeded size limit (${raw.byteLength} > ${params.config.maxBytes} bytes)`,
     );
   }
 
+  const buffer = Buffer.from(raw);
   const metadata = await params.runtime.media.getImageMetadata(buffer);
 
   return {
